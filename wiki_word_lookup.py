@@ -2,6 +2,10 @@ import numpy as np
 import argparse
 from sklearn.preprocessing import normalize
 
+from scipy.sparse import issparse
+from scipy.sparse.linalg import svds
+from sklearn.feature_extraction.text import TfidfVectorizer
+
 from WikiDataReader import *
 
 #####################################################################
@@ -9,7 +13,29 @@ from WikiDataReader import *
 # Define your new subclasses below!
 #####################################################################
 
+class SVDWordVectors(WikiWordVectors):
 
+    def __init__(self):
+        self.vectorizer = TfidfVectorizer(max_features=10000, max_df=0.7)
+        self.V = None
+
+    def train(self, documents):
+        tdm = self.vectorizer.fit_transform(documents)   # (N, 10000), sparse
+        U, s, Vh = svds(tdm, k=100)                      # U (N, 100), s (100,), Vh (100, 10000)
+        self.V = Vh.T                                    # (10000, 100): row j = word j
+        return self.V
+
+    def get_word_index(self, word):
+        return self.vectorizer.vocabulary_.get(word, -1)
+
+    def get_vocabulary(self):
+        return list(self.vectorizer.get_feature_names_out())
+
+    def get_word_vector(self, word):
+        i = self.get_word_index(word)
+        if i == -1:
+            return None
+        return self.V[i:i+1]                             # (1, 100)
 
 
 
@@ -35,16 +61,20 @@ class WikiWordLookup():
         if self.wiki_word_vectors is None:
             raise RuntimeError("Please run train_vector_model first!")
 
-        word_vector = normalize(self.word_vector_model.get_word_vector(input_word))
+        word_vector = self.word_vector_model.get_word_vector(input_word)
         if word_vector is None:
             return None, None
+        word_vector = normalize(word_vector)
 
         # TODO: REPLACE the following line with code that computes the
         # cosine similarity between the vector for input_word and all
         # other word vectors in the self.wiki_word_vectors matrix, and
         # saves the similarity scores to a list or numpy array called 
         # sims, indexed in the same order as self.wiki_word_vectors.
-        sims = []
+        sims = self.wiki_word_vectors @ word_vector.T
+        if issparse(sims):
+            sims = sims.toarray()
+        sims = np.asarray(sims).ravel()
 
         return sims, np.argsort(sims)[::-1][1:]
 
@@ -71,7 +101,7 @@ def main():
 
     articles = WikiArticles(args.data_dir, args.num_articles)
     # TODO replace the following line with an initialization of the appropriate WikiWordVectors subclass
-    word_vector_model = None
+    word_vector_model = SVDWordVectors()
 
     word_lookup = WikiWordLookup(articles, word_vector_model)
     word_lookup.train_vector_model()

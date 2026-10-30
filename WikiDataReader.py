@@ -21,34 +21,42 @@ def get_files(dirname):
 class WikiArticles():
 
     def __init__(self, data_dir, max_articles=None):
+        """Constructor: sets up the object and stores the folder for the data directory, the # of max articles to limit, and the list of names"""
         self.data_dir = data_dir
         self.max_articles = max_articles
         self.article_names = None
 
     def _read_wiki_file(self, fp):
+        """generator: yields each file's name and abstract"""
         for line in fp:
-            line_as_json = None # TODO replace me: use the json library to parse the current line as a JSON object
-            name = None         # TODO replace me: in the JSON object you got above, look up the value of the "name" attribute
-            abstract = None     # TODO replace me: in the JSON object you got above, look up the value of the "abstract" attribute
+            line_as_json = json.loads(line) # turns the text into a dict
+            name = line_as_json["name"]
+            abstract = line_as_json["abstract"] # search for the name and abstract and yield them
             yield name, abstract
 
     def get_abstracts(self):
-        n_processed = 0
+        """matches the abstracts to the list of names, which were split because the model only uses the text"""
+        n_processed = 0 # count how many articles have been handed out
         for fname in get_files(self.data_dir):
             with open(fname) as fp:
                 for name, abstract in self._read_wiki_file(fp):
 
+                    # stop if we've passed the limit
                     if self.max_articles is not None and n_processed > self.max_articles:
                         break
+                    
                     n_processed += 1
 
                     if self.article_names is None:
-                        self.article_names = []
+                        self.article_names = [] 
 
-                    self.article_names.append(name)
+                    self.article_names.append(name) # save the name to a list
                     yield abstract
 
+
+
     def get_names(self):
+        """returns a list of titles"""
         if self.article_names is None:
             raise RuntimeError("get_names cannot be called until get_abstracts has been called!")
         return self.article_names
@@ -83,7 +91,7 @@ class WikiDocumentVectors(ABC):
         the vector representation of a new input document (i.e., a
         document that was not previously seen during training). This
         method can only be called after train has been called.
-
+ 
         Parameters:
         new_doc: a string representing the new document to process
 
